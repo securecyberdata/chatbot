@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Upload, Bot, User, Settings } from 'lucide-react';
+import { Send, Upload, Bot, User, Settings, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import VoiceChat from './VoiceChat';
+import VoiceSettings from './VoiceSettings';
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -19,6 +21,10 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLLM, setSelectedLLM] = useState('openai');
   const [apiKeys, setApiKeys] = useState({});
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Load saved LLM selection and API keys
@@ -79,6 +85,70 @@ const Chat = () => {
   const hasValidApiKey = () => {
     const selectedKey = apiKeys[selectedLLM];
     return selectedKey && selectedKey.trim().length > 0;
+  };
+
+  // Voice-related functions
+  const handleVoiceInput = (transcript) => {
+    console.log('Voice input received:', transcript);
+    setInput(transcript);
+    setIsListening(false);
+    
+    // Auto-send after voice input
+    setTimeout(() => {
+      handleSend();
+    }, 500);
+  };
+
+  const handleToggleVoice = (listening, speaking = false) => {
+    setIsListening(listening);
+    if (speaking !== false) {
+      setIsSpeaking(speaking);
+    }
+  };
+
+  const toggleVoiceMode = () => {
+    const newVoiceMode = !isVoiceMode;
+    setIsVoiceMode(newVoiceMode);
+    
+    if (newVoiceMode) {
+      // Voice mode enabled
+      toast.success('Voice mode enabled! Click the microphone to start speaking.');
+      
+      // Add welcome message
+      const welcomeMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: 'Voice mode activated! 🎤 You can now:\n\n• Click the microphone button to speak\n• The AI will respond with both text and voice\n• Adjust voice settings in the voice panel\n\nTry saying something!',
+        timestamp: new Date().toISOString(),
+        model: 'Voice Assistant'
+      };
+      setMessages(prev => [...prev, welcomeMessage]);
+    } else {
+      // Voice mode disabled
+      toast.success('Voice mode disabled');
+      
+      // Stop any ongoing speech
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+    }
+  };
+
+  const toggleVoicePanel = () => {
+    setShowVoicePanel(!showVoicePanel);
+  };
+
+  // Voice input functions
+  const startListening = () => {
+    if (window.speechSynthesis && isVoiceMode) {
+      setIsListening(true);
+      // This will be handled by the VoiceChat component
+    }
+  };
+
+  const stopListening = () => {
+    setIsListening(false);
   };
 
   const handleSend = async () => {
@@ -150,6 +220,19 @@ const Chat = () => {
       setMessages(prev => [...prev, aiMessage]);
       toast.success('AI response received!');
       
+      // Auto-speak the response if voice mode is enabled
+      if (isVoiceMode && response.data.response) {
+        setTimeout(() => {
+          if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(response.data.response);
+            utterance.onstart = () => setIsSpeaking(true);
+            utterance.onend = () => setIsSpeaking(false);
+            utterance.onerror = () => setIsSpeaking(false);
+            window.speechSynthesis.speak(utterance);
+          }
+        }, 1000); // Small delay to let user read the response first
+      }
+      
     } catch (error) {
       console.error('=== CHAT: API Error occurred ===');
       console.error('Error object:', error);
@@ -207,16 +290,51 @@ const Chat = () => {
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">AI Chat</h2>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-lg font-semibold text-white">AI Chat</h2>
+                {isVoiceMode && (
+                  <div className="flex items-center space-x-1 bg-green-500 bg-opacity-20 px-2 py-1 rounded-full">
+                    <Volume2 size={12} className="text-green-200" />
+                    <span className="text-xs text-green-200 font-medium">VOICE</span>
+                  </div>
+                )}
+              </div>
               <p className="text-blue-100">
                 {hasValidApiKey() 
                   ? `Connected to ${getLLMDisplayName(selectedLLM)}` 
                   : 'Demo Mode - Configure API Key in Settings'
                 }
+                {isVoiceMode && ' • Voice Mode Active'}
               </p>
             </div>
           </div>
           <div className="flex items-center space-x-3">
+            {/* Voice Mode Toggle */}
+            <button
+              onClick={toggleVoiceMode}
+              className={`p-2 rounded-lg transition-colors ${
+                isVoiceMode 
+                  ? 'bg-green-500 text-white hover:bg-green-600' 
+                  : 'text-white hover:bg-white hover:bg-opacity-20'
+              }`}
+              title={isVoiceMode ? 'Voice Mode: ON' : 'Voice Mode: OFF'}
+            >
+              {isVoiceMode ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </button>
+            
+            {/* Voice Panel Toggle */}
+            <button
+              onClick={toggleVoicePanel}
+              className={`p-2 rounded-lg transition-colors ${
+                showVoicePanel 
+                  ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                  : 'text-white hover:bg-white hover:bg-opacity-20'
+              }`}
+              title="Voice Settings"
+            >
+              <Mic size={20} />
+            </button>
+            
             <button
               onClick={() => navigate('/settings')}
               className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
@@ -246,6 +364,12 @@ const Chat = () => {
                 : `⚠️ Demo Mode - No API key for ${getLLMDisplayName(selectedLLM)}`
               }
             </span>
+            {isVoiceMode && (
+              <span className="text-sm text-green-700 ml-2 flex items-center space-x-1">
+                <Volume2 size={14} />
+                Voice Mode Active
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-700">
@@ -260,6 +384,19 @@ const Chat = () => {
           </div>
         </div>
       </div>
+
+      {/* Voice Panel */}
+      {showVoicePanel && (
+        <div className="px-6 py-4 border-b bg-gray-50">
+          <VoiceChat
+            onVoiceInput={handleVoiceInput}
+            onToggleVoice={handleToggleVoice}
+            isListening={isListening}
+            isSpeaking={isSpeaking}
+            currentText={messages[messages.length - 1]?.content}
+          />
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -291,8 +428,29 @@ const Chat = () => {
                 <div className={`text-xs mt-1 ${
                   message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
                 }`}>
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                  {message.model && ` • ${message.model}`}
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                      {message.model && ` • ${message.model}`}
+                    </span>
+                    {isVoiceMode && message.role === 'assistant' && (
+                      <button
+                        onClick={() => {
+                          if (window.speechSynthesis) {
+                            const utterance = new SpeechSynthesisUtterance(message.content);
+                            utterance.onstart = () => setIsSpeaking(true);
+                            utterance.onend = () => setIsSpeaking(false);
+                            utterance.onerror = () => setIsSpeaking(false);
+                            window.speechSynthesis.speak(utterance);
+                          }
+                        }}
+                        className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded hover:bg-green-200 transition-colors ml-2"
+                        title="Listen to this message"
+                      >
+                        🔊 Listen
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -319,6 +477,18 @@ const Chat = () => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Voice Settings Bar */}
+      <div className="px-6 py-3 border-t bg-white">
+        <VoiceSettings
+          isVoiceMode={isVoiceMode}
+          onToggleVoiceMode={toggleVoiceMode}
+          isListening={isListening}
+          onStartListening={startListening}
+          onStopListening={stopListening}
+          onOpenVoicePanel={toggleVoicePanel}
+        />
+      </div>
+
       {/* Input */}
       <div className="p-6 border-t bg-gray-50 rounded-b-lg">
         <div className="flex space-x-3">
@@ -327,13 +497,30 @@ const Chat = () => {
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder={hasValidApiKey() 
-              ? "Type your message here... (Connected to real AI)" 
+              ? `Type your message here... ${isVoiceMode ? 'Or use voice input!' : '(Connected to real AI)'}` 
               : "Type your message here... (Demo mode - configure API key in Settings)"
             }
             className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             rows={2}
             disabled={isLoading}
           />
+          
+          {/* Voice Input Button */}
+          {isVoiceMode && (
+            <button
+              onClick={isListening ? stopListening : startListening}
+              disabled={isLoading}
+              className={`p-3 rounded-lg transition-colors ${
+                isListening 
+                  ? 'bg-red-500 text-white hover:bg-red-600' 
+                  : 'bg-green-500 text-white hover:bg-green-600'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={isListening ? 'Stop Listening' : 'Start Voice Input'}
+            >
+              {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+          )}
+          
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
@@ -344,12 +531,33 @@ const Chat = () => {
           </button>
         </div>
         <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-gray-500">
-            {hasValidApiKey() 
-              ? `💡 Connected to ${getLLMDisplayName(selectedLLM)} - Ask anything!`
-              : `💡 Demo Tip: Go to Settings to configure your API key for ${getLLMDisplayName(selectedLLM)}`
-            }
-          </p>
+          <div className="flex items-center space-x-4">
+            <p className="text-xs text-gray-500">
+              {hasValidApiKey() 
+                ? `💡 Connected to ${getLLMDisplayName(selectedLLM)} - Ask anything!`
+                : `💡 Demo Tip: Go to Settings to configure your API key for ${getLLMDisplayName(selectedLLM)}`
+              }
+            </p>
+            {isVoiceMode && (
+              <div className="flex items-center space-x-2">
+                {isListening && (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-red-600">Listening...</span>
+                  </div>
+                )}
+                {isSpeaking && (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-green-600">Speaking...</span>
+                  </div>
+                )}
+                <span className="text-xs text-gray-500">
+                  💡 Voice mode: Click mic to speak, AI will respond with voice
+                </span>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => navigate('/settings')}
             className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -357,6 +565,22 @@ const Chat = () => {
             {hasValidApiKey() ? 'Change Settings' : 'Configure API Keys'}
           </button>
         </div>
+        
+        {/* Voice Mode Help */}
+        {isVoiceMode && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <Volume2 size={16} className="text-green-600" />
+              <h4 className="text-sm font-medium text-green-800">Voice Mode Active</h4>
+            </div>
+            <div className="text-xs text-green-700 space-y-1">
+              <p>• Click the microphone button to start voice input</p>
+              <p>• Speak clearly and naturally</p>
+              <p>• The AI will respond with both text and voice</p>
+              <p>• Use the voice panel for advanced settings</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

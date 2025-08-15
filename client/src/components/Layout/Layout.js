@@ -6,7 +6,8 @@ import {
   User,
   Menu,
   X,
-  Settings
+  Settings,
+  Headphones
 } from 'lucide-react';
 
 const Layout = () => {
@@ -17,6 +18,7 @@ const Layout = () => {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Chat', href: '/chat', icon: MessageSquare },
+    { name: 'Voice Agent', href: '/voice-agent', icon: Headphones },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -110,6 +112,8 @@ const Layout = () => {
             <h2 className="text-lg font-medium text-gray-900">
               {location.pathname === '/' ? 'Dashboard' : 
                location.pathname === '/chat' ? 'Chat' : 
+               location.pathname === '/voice-agent' ? 'Voice Agent' : 
+               location.pathname === '/voice-agent/settings' ? 'Voice Agent Settings' :
                location.pathname === '/settings' ? 'Settings' : 'Dashboard'}
             </h2>
             <div></div>
